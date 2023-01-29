@@ -7,9 +7,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.room.Room;
 
 import android.content.DialogInterface;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -21,17 +24,18 @@ import android.widget.Toast;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
-import com.mastercoding.helloworld2.db.DatabaseHelper;
+import com.mastercoding.helloworld2.db.ContactsAppDatabase;
 import com.mastercoding.helloworld2.db.entity.Contact;
 import com.mastercoding.helloworld2.adapter.ContactsAdapter;
 
 
 import java.util.ArrayList;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
-    // NO ROOM Database Project
-    // Using SQLITE
 
 
 
@@ -39,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
     private ContactsAdapter contactsAdapter;
     private ArrayList<Contact> contactArrayList  = new ArrayList<>();
     private RecyclerView recyclerView;
-    private DatabaseHelper db;
+    ContactsAppDatabase contactsAppDatabase;
 
 
     @Override
@@ -51,17 +55,27 @@ public class MainActivity extends AppCompatActivity {
         // Toolbar
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        getSupportActionBar().setTitle("My Favorite Contacts");
+        getSupportActionBar().setTitle("My Contacts");
 
 
         // RecyclerVIew
         recyclerView = findViewById(R.id.recycler_view_contacts);
-        db = new DatabaseHelper(this);
+        contactsAppDatabase = Room.databaseBuilder(
+                getApplicationContext(),
+                ContactsAppDatabase.class,
+                "ContactDB")
+                .allowMainThreadQueries()
+                        .build();
 
         // Contacts List
-        contactArrayList.addAll(db.getAllContacts());
+        // Display all the contacts
+        //contactArrayList.addAll(contactsAppDatabase.getContactDAO().getContacts());
+        GetAllContactBackground();
+
+
 
         contactsAdapter = new ContactsAdapter(this, contactArrayList,MainActivity.this);
+
         RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(getApplicationContext());
         recyclerView.setLayoutManager(layoutManager);
         recyclerView.setItemAnimator(new DefaultItemAnimator());
@@ -146,7 +160,7 @@ public class MainActivity extends AppCompatActivity {
     private void DeleteContact(Contact contact, int position) {
 
         contactArrayList.remove(position);
-        db.deleteContact(contact);
+        contactsAppDatabase.getContactDAO().deleteContact(contact);
         contactsAdapter.notifyDataSetChanged();
 
 
@@ -159,7 +173,7 @@ public class MainActivity extends AppCompatActivity {
         contact.setName(name);
         contact.setEmail(email);
 
-        db.updateContact(contact);
+        contactsAppDatabase.getContactDAO().updateContact(contact);
 
         contactArrayList.set(position, contact);
         contactsAdapter.notifyDataSetChanged();
@@ -170,14 +184,35 @@ public class MainActivity extends AppCompatActivity {
 
     private void CreateContact(String name, String email){
 
-        long id = db.insertContact(name, email);
-        Contact contact = db.getContact(id);
+        long id = contactsAppDatabase.getContactDAO().addContact(new Contact(name,email,0));
+        Contact contact = contactsAppDatabase.getContactDAO().getContact(id);
 
         if (contact != null){
             contactArrayList.add(0, contact);
             contactsAdapter.notifyDataSetChanged();
         }
 
+    }
+
+    private  void GetAllContactBackground(){
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        Handler handler = new Handler(Looper.getMainLooper());
+
+        executorService.execute(new Runnable() {
+            @Override
+            public void run() {
+                // background we will fetch list
+
+                contactArrayList.addAll(contactsAppDatabase.getContactDAO().getContacts());
+                // after fetching
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        contactsAdapter.notifyDataSetChanged();
+                    }
+                });
+            }
+        });
     }
 
 
